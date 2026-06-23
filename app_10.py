@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import pandas as pd
 import openpyxl
 import plotly.express as px
@@ -368,29 +369,38 @@ with st.sidebar:
         box-shadow: 0 0 0 1px {NARANJO} !important;
       }}
     </style>
+    """, unsafe_allow_html=True)
+
+    # JS via components.html (único método que ejecuta scripts en Streamlit)
+    components.html(f"""
     <script>
     (function() {{
       var textos = {textos_js};
       function marcar() {{
-        var sidebar = document.querySelector('section[data-testid="stSidebar"]');
+        var doc = window.parent.document;
+        var sidebar = doc.querySelector('section[data-testid="stSidebar"]');
         if (!sidebar) return;
         sidebar.querySelectorAll('button').forEach(function(btn) {{
           var p = btn.querySelector('p');
           if (!p) return;
           var txt = p.innerText.trim();
           if (textos.indexOf(txt) !== -1) {{
-            btn.classList.add('sb-activo');
+            btn.style.borderColor = '{NARANJO}';
+            btn.style.backgroundColor = 'rgba(225,132,38,0.22)';
+            btn.style.boxShadow = '0 0 0 1px {NARANJO}';
           }} else {{
-            btn.classList.remove('sb-activo');
+            btn.style.borderColor = 'transparent';
+            btn.style.backgroundColor = 'rgba(255,255,255,0.07)';
+            btn.style.boxShadow = 'none';
           }}
         }});
       }}
-      setTimeout(marcar, 80);
-      setTimeout(marcar, 300);
-      setTimeout(marcar, 700);
+      setTimeout(marcar, 100);
+      setTimeout(marcar, 400);
+      setTimeout(marcar, 900);
     }})();
     </script>
-    """, unsafe_allow_html=True)
+    """, height=0)
 
     # ── Botón "Todos los proyectos" ──
     if st.button("🏗️  Todos los proyectos", key="btn_todas", use_container_width=True):
