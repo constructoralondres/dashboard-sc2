@@ -469,7 +469,10 @@ if st.session_state.get("vista") == "reunion" and obras_activas_count == 1 and l
         mostrar_estado = st.checkbox("Colorear por estado", value=True, key="reunion_estado")
 
     # ── Preparar datos ─────────────────────────────────────────────────────────
-    df_reu = df_ult[["SUBCONTRATO","ACTIVIDAD","ESTADO","NOTA_FINAL"] + ([criterio_col] if criterio_col != "NOTA_FINAL" else [])].copy()
+    cols_reu = ["SUBCONTRATO","ACTIVIDAD","ESTADO","NOTA_FINAL","FLAG"] + ([criterio_col] if criterio_col != "NOTA_FINAL" else [])
+    cols_reu = list(dict.fromkeys(c for c in cols_reu if c in df_ult.columns))
+    df_reu = df_ult[cols_reu].copy()
+    if "FLAG" not in df_reu.columns: df_reu["FLAG"] = ""
     df_reu[criterio_col] = pd.to_numeric(df_reu[criterio_col], errors="coerce")
     df_reu = df_reu.dropna(subset=[criterio_col]).sort_values(
         criterio_col, ascending=(orden == "Menor a mayor ↑")
