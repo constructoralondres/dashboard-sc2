@@ -269,11 +269,6 @@ with st.sidebar:
                 nuevas.add(obra)
                 st.session_state["vista"] = "dashboard"  # resetear vista al cambiar obra
             st.session_state["obras_activas"] = nuevas; st.rerun()
-        # Botón reunión: solo si esta obra está activa y es la única seleccionada
-        if obra in obras_activas and len(obras_activas) == 1 and not es_futuro:
-            if st.button(f"📋 Vista reunión", key=f"btn_reunion_{obra}", use_container_width=True):
-                st.session_state["vista"] = "reunion"
-                st.rerun()
     obras_activas = st.session_state["obras_activas"]
     if len(obras_activas) == 0:
         obras_sel = [o for o in ORDEN_OBRAS if o in obras_en_df]
@@ -295,7 +290,69 @@ elif obras_activas_count >= 2:
     _sub = f'<div style="font-size:1.3rem;font-weight:700;color:{NARANJO};line-height:1.2;margin-top:4px;">VARIAS OBRAS</div>'
 else:
     _sub = f'<div style="font-size:1.3rem;font-weight:700;color:{NARANJO};line-height:1.2;margin-top:4px;">TODOS LOS PROYECTOS</div>'
-_header_placeholder.markdown(f"""<div style="background-color:white;padding:24px 32px;border-radius:12px;display:flex;align-items:center;gap:28px;border-bottom:4px solid {NARANJO};margin-bottom:28px;box-shadow:0 2px 12px rgba(26,24,70,0.08);">{logo_html}<div style="border-left:2px solid {GRIS};padding-left:24px;"><div style="font-size:2rem;font-weight:800;color:{AZUL};line-height:1.1;">Evaluación de Subcontratos</div>{_sub}</div></div>""", unsafe_allow_html=True)
+
+# Botón de reunión: solo visible cuando hay UNA obra seleccionada con datos
+_mostrar_btn_reunion = (obras_activas_count == 1 and len(obras_sel) == 1)
+
+# CSS para el botón de reunión estético
+st.markdown(f"""
+<style>
+  div[data-testid="stButton"].reunion-btn > button {{
+    background: linear-gradient(135deg, {AZUL} 0%, {AZUL_MED} 100%) !important;
+    color: white !important;
+    border: none !important;
+    border-radius: 10px !important;
+    padding: 10px 20px !important;
+    font-size: 0.88rem !important;
+    font-weight: 600 !important;
+    letter-spacing: 0.04em !important;
+    box-shadow: 0 4px 14px rgba(26,24,70,0.25) !important;
+    transition: all 0.2s ease !important;
+    cursor: pointer !important;
+    white-space: nowrap !important;
+  }}
+  div[data-testid="stButton"].reunion-btn > button:hover {{
+    background: linear-gradient(135deg, {NARANJO} 0%, #c97220 100%) !important;
+    box-shadow: 0 6px 18px rgba(225,132,38,0.35) !important;
+    transform: translateY(-1px) !important;
+  }}
+  div[data-testid="stButton"].reunion-btn > button p {{
+    color: white !important;
+    font-size: 0.88rem !important;
+    font-weight: 600 !important;
+  }}
+</style>
+""", unsafe_allow_html=True)
+
+with _header_placeholder.container():
+    _col_hdr, _col_btn = st.columns([10, 2]) if _mostrar_btn_reunion else (st.columns([1])[0], None), None
+    if _mostrar_btn_reunion:
+        _col_hdr, _col_btn = st.columns([10, 2])
+    else:
+        _col_hdr = st.columns([1])[0]
+
+    with _col_hdr:
+        st.markdown(f"""
+        <div style="background-color:white;padding:20px 28px;border-radius:12px;display:flex;align-items:center;gap:28px;border-bottom:4px solid {NARANJO};margin-bottom:0px;box-shadow:0 2px 12px rgba(26,24,70,0.08);">
+          {logo_html}
+          <div style="border-left:2px solid {GRIS};padding-left:24px;">
+            <div style="font-size:2rem;font-weight:800;color:{AZUL};line-height:1.1;">Evaluación de Subcontratos</div>
+            {_sub}
+          </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    if _mostrar_btn_reunion and _col_btn is not None:
+        with _col_btn:
+            st.markdown("<div style='padding-top:18px;'>", unsafe_allow_html=True)
+            st.markdown('<div class="reunion-btn">', unsafe_allow_html=True)
+            if st.button("🗓️ Vista\nReunión", key="btn_reunion_header"):
+                st.session_state["vista"] = "reunion"
+                st.rerun()
+            st.markdown("</div>", unsafe_allow_html=True)
+            st.markdown("</div>", unsafe_allow_html=True)
+
+st.markdown("<div style='margin-bottom:20px'></div>", unsafe_allow_html=True)
 
 # ── Filtro datos ───────────────────────────────────────────────────────────────
 if not obras_sel:
@@ -319,21 +376,44 @@ if st.session_state.get("vista") == "reunion" and obras_activas_count == 1 and l
     df_ult = df_obra[df_obra["N_EVA"] == ultima_eva].copy()
 
     # ── Header reunión ─────────────────────────────────────────────────────────
-    col_hdr, col_back = st.columns([8, 1])
-    with col_hdr:
-        st.markdown(f"""
-        <div style="background:{AZUL};padding:20px 28px;border-radius:12px;margin-bottom:20px;border-bottom:4px solid {NARANJO};">
-          <div style="color:white;font-size:0.85rem;font-weight:500;letter-spacing:0.1em;text-transform:uppercase;opacity:0.7;">Vista de Reunión</div>
-          <div style="color:white;font-size:2rem;font-weight:800;line-height:1.2;">{obra_label}</div>
-          <div style="color:{NARANJO};font-size:1rem;font-weight:600;margin-top:4px;">Evaluación N°{ultima_eva} — resultados por subcontrato</div>
-        </div>
-        """, unsafe_allow_html=True)
-    with col_back:
-        st.markdown("<div style='padding-top:30px'>", unsafe_allow_html=True)
-        if st.button("← Volver", key="btn_volver_reunion"):
-            st.session_state["vista"] = "dashboard"
-            st.rerun()
-        st.markdown("</div>", unsafe_allow_html=True)
+    st.markdown(f"""
+    <div style="background:{AZUL};padding:20px 28px 20px 28px;border-radius:12px;margin-bottom:20px;border-bottom:4px solid {NARANJO};display:flex;align-items:center;justify-content:space-between;">
+      <div>
+        <div style="color:white;font-size:0.78rem;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;opacity:0.6;">Vista de Reunión</div>
+        <div style="color:white;font-size:2rem;font-weight:800;line-height:1.2;">{obra_label}</div>
+        <div style="color:{NARANJO};font-size:1rem;font-weight:600;margin-top:4px;">Evaluación N°{ultima_eva} — resultados por subcontrato</div>
+      </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # Botón volver — fuera del HTML para que Streamlit lo gestione
+    st.markdown(f"""
+    <style>
+      div[data-testid="stButton"].volver-btn > button {{
+        background: transparent !important;
+        color: {AZUL} !important;
+        border: 1.5px solid {AZUL} !important;
+        border-radius: 8px !important;
+        font-size: 0.82rem !important;
+        font-weight: 600 !important;
+        padding: 6px 16px !important;
+        margin-bottom: 16px !important;
+      }}
+      div[data-testid="stButton"].volver-btn > button:hover {{
+        background: {AZUL} !important;
+        color: white !important;
+      }}
+      div[data-testid="stButton"].volver-btn > button p {{
+        color: inherit !important;
+        font-size: 0.82rem !important;
+      }}
+    </style>
+    """, unsafe_allow_html=True)
+    st.markdown('<div class="volver-btn">', unsafe_allow_html=True)
+    if st.button("← Volver al dashboard", key="btn_volver_reunion"):
+        st.session_state["vista"] = "dashboard"
+        st.rerun()
+    st.markdown("</div>", unsafe_allow_html=True)
 
     # ── Selector de criterio ───────────────────────────────────────────────────
     # Construir lista de opciones: "Nota final" + todos los criterios con datos
