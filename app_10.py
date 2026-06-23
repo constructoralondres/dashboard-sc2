@@ -135,27 +135,43 @@ st.markdown(f"""
 # ── Helpers ────────────────────────────────────────────────────────────────────
 COLOR_ESTADO = {"APROBADO": "#2ECC71", "MEJORAR": NARANJO, "REPROBADO": TERRACOTA}
 COLOR_AREA   = {"TERRENO": AZUL, "RRHH": AZUL_MED, "SSOMA": NARANJO, "CALIDAD": ARENA}
+COLOR_FLAG   = {"NO RECOMENDADO": "#8B0000", "NO AUTORIZADO": "#2a2a2a"}
+ICONO_FLAG   = {"NO RECOMENDADO": "🚫", "NO AUTORIZADO": "⛔"}
 
-def plotly_layout(fig):
+def _label_con_flag(sc, flag):
+    if flag == "NO AUTORIZADO":  return f"⛔ {sc}"
+    if flag == "NO RECOMENDADO": return f"🚫 {sc}"
+    return sc
+
+def plotly_layout(fig, font_size=12):
     fig.update_layout(
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-        font=dict(family="Hanken Grotesk, sans-serif", color="#1A1846"),
+        font=dict(family="Hanken Grotesk, sans-serif", color="#1A1846", size=font_size),
         margin=dict(t=15, b=15, l=10, r=10),
     )
-    fig.update_xaxes(gridcolor="#CCCCCC", zeroline=False, tickfont=dict(color="#1A1846", size=12))
-    fig.update_yaxes(gridcolor="#CCCCCC", zeroline=False, tickfont=dict(color="#1A1846", size=12))
-    fig.update_layout(legend=dict(font=dict(color="#1A1846", size=12)))
+    fig.update_xaxes(gridcolor="#CCCCCC", zeroline=False,
+                     tickfont=dict(color="#1A1846", size=font_size))
+    fig.update_yaxes(gridcolor="#CCCCCC", zeroline=False,
+                     tickfont=dict(color="#1A1846", size=font_size))
+    fig.update_layout(legend=dict(font=dict(color="#1A1846", size=font_size)))
     return fig
 
 def top5_bar(df_area, area, color):
-    top = (df_area.groupby("SUBCONTRATO")[area].mean().dropna().reset_index()
-           .rename(columns={area: "Nota"}).sort_values("Nota", ascending=False).head(5)
+    top = (df_area.groupby("SUBCONTRATO")
+           .agg(Nota=(area, "mean"), Flag=("FLAG", "first"))
+           .dropna(subset=["Nota"]).reset_index()
+           .sort_values("Nota", ascending=False).head(5)
            .sort_values("Nota", ascending=True))
-    top["Nota"] = top["Nota"].round(2)
-    fig = px.bar(top, x="Nota", y="SUBCONTRATO", orientation="h", text="Nota",
-                 range_x=[1, 7], color_discrete_sequence=[color])
-    fig.update_traces(textposition="outside", marker_line_width=0)
-    return plotly_layout(fig.update_layout(height=240, showlegend=False))
+    top["Nota"]  = top["Nota"].round(2)
+    top["Label"] = top.apply(lambda r: _label_con_flag(r["SUBCONTRATO"], r["Flag"]), axis=1)
+    top["Color"] = top["Flag"].apply(lambda f: COLOR_FLAG.get(f, color))
+    fig = go.Figure(go.Bar(
+        x=top["Nota"], y=top["Label"], orientation="h",
+        text=top["Nota"], textposition="outside",
+        marker_color=top["Color"].tolist(), marker_line_width=0,
+    ))
+    fig.update_layout(xaxis_range=[0, 7], height=240, showlegend=False)
+    return plotly_layout(fig)
 
 @st.cache_data
 def cargar_datos(file_bytes):
@@ -180,6 +196,16 @@ def cargar_datos(file_bytes):
     df["ESTADO"]      = df["ESTADO"].str.strip().str.upper()
     if "ACTIVIDAD" in df.columns:
         df["ACTIVIDAD"] = df["ACTIVIDAD"].str.strip().str.title()
+
+    # Marcar subcontratos que tienen alguna fila NO RECOMENDADO o NO AUTORIZADO
+    sc_no_rec = set(df[df["ESTADO"]=="NO RECOMENDADO"]["SUBCONTRATO"].str.upper())
+    sc_no_aut = set(df[df["ESTADO"]=="NO AUTORIZADO"]["SUBCONTRATO"].str.upper())
+    def _flag(sc):
+        s = str(sc).upper()
+        if s in sc_no_aut: return "NO AUTORIZADO"
+        if s in sc_no_rec: return "NO RECOMENDADO"
+        return ""
+    df["FLAG"] = df["SUBCONTRATO"].apply(_flag)
     return df
 
 # ── Logo ───────────────────────────────────────────────────────────────────────
@@ -468,59 +494,92 @@ if st.session_state.get("vista") == "reunion" and obras_activas_count == 1 and l
     st.markdown("<div style='margin-top:20px'></div>", unsafe_allow_html=True)
 
     # ── Gráfico principal ──────────────────────────────────────────────────────
-    # Colores por estado o color único
-    if mostrar_estado:
-        df_reu["_color"] = df_reu["ESTADO"].map(
-            {"APROBADO":"#2ECC71","MEJORAR":NARANJO,"REPROBADO":TERRACOTA}
-        ).fillna(GRIS)
-        colores = df_reu["_color"].tolist()
-    else:
-        colores = [AZUL] * len(df_reu)
+    # Colores: si mostrar_estado, colores por estado; SC flaggeados siempre en su color especial
+    def _color_reu(row):
+        flag = str(row.get("FLAG",""))
+        if flag == "NO AUTORIZADO":  return "#2a2a2a"
+        if flag == "NO RECOMENDADO": return "#8B0000"
+        if mostrar_estado:
+            return {"APROBADO":"#2ECC71","MEJORAR":NARANJO,"REPROBADO":TERRACOTA}.get(row["ESTADO"], GRIS)
+        return AZUL
 
-    # Etiqueta Y: subcontrato + actividad
-    df_reu["_label"] = df_reu.apply(
-        lambda r: f"{r['SUBCONTRATO'][:32]}  [{r['ACTIVIDAD'][:18] if pd.notna(r.get('ACTIVIDAD')) else '—'}]",
-        axis=1
-    )
+    df_reu["_color"] = df_reu.apply(_color_reu, axis=1)
+
+    # Etiqueta Y: icono flag + subcontrato + actividad
+    def _reu_label(row):
+        flag = str(row.get("FLAG",""))
+        icono = "⛔ " if flag=="NO AUTORIZADO" else ("🚫 " if flag=="NO RECOMENDADO" else "")
+        sc  = str(row["SUBCONTRATO"])[:34]
+        act = str(row["ACTIVIDAD"])[:20] if pd.notna(row.get("ACTIVIDAD")) else "—"
+        return f"{icono}{sc}  [{act}]"
+
+    df_reu["_label"] = df_reu.apply(_reu_label, axis=1)
+
+    # Tamaño de fuente grande para TV 55"
+    FS = 18   # fuente base gráfico reunión
 
     fig_reu = go.Figure(go.Bar(
         x=df_reu[criterio_col],
         y=df_reu["_label"],
         orientation="h",
         text=df_reu[criterio_col],
-        texttemplate="%{text:.2f}",
+        texttemplate="%{text:.1f}",
         textposition="outside",
-        marker_color=colores,
+        textfont=dict(size=FS, color="#1A1846"),
+        marker_color=df_reu["_color"].tolist(),
         marker_line_width=0,
         hovertemplate="<b>%{y}</b><br>Nota: %{x:.2f}<extra></extra>",
     ))
 
-    # Líneas de referencia
-    fig_reu.add_vline(x=5.5, line_dash="dash", line_color="#2ECC71",
-                      annotation_text="Aprobado ≥5.5", annotation_position="top right")
-    fig_reu.add_vline(x=4.0, line_dash="dash", line_color=NARANJO,
-                      annotation_text="Mejorar ≥4.0", annotation_position="bottom right")
+    fig_reu.add_vline(x=5.5, line_dash="dash", line_color="#2ECC71", line_width=2,
+                      annotation_text="Aprobado ≥5.5",
+                      annotation_font=dict(size=FS-2, color="#2ECC71"),
+                      annotation_position="top right")
+    fig_reu.add_vline(x=4.0, line_dash="dash", line_color=NARANJO, line_width=2,
+                      annotation_text="Mejorar ≥4.0",
+                      annotation_font=dict(size=FS-2, color=NARANJO),
+                      annotation_position="bottom right")
 
-    alto = max(420, len(df_reu) * 42)
+    alto = max(500, len(df_reu) * 52)
     fig_reu.update_layout(
         height=alto,
-        xaxis_range=[0, 7.5],
-        xaxis_title="Nota (1 a 7)",
+        xaxis_range=[0, 7.8],
+        xaxis_title=dict(text="Nota (1 a 7)", font=dict(size=FS)),
+        xaxis_tickfont=dict(size=FS),
+        yaxis_tickfont=dict(size=FS),
         yaxis_title="",
         showlegend=False,
-        margin=dict(l=320, r=80, t=30, b=40),
+        margin=dict(l=380, r=100, t=30, b=50),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        font=dict(family="Hanken Grotesk, sans-serif", color="#1A1846", size=FS),
     )
-    st.plotly_chart(plotly_layout(fig_reu), use_container_width=True)
+    fig_reu.update_xaxes(gridcolor="#CCCCCC", zeroline=False)
+    fig_reu.update_yaxes(gridcolor="rgba(0,0,0,0)", zeroline=False)
+    st.plotly_chart(fig_reu, use_container_width=True)
 
-    # ── Leyenda de colores ─────────────────────────────────────────────────────
+    # ── Leyenda ────────────────────────────────────────────────────────────────
+    tiene_flags = df_reu["FLAG"].ne("").any()
+    leyenda_items = []
     if mostrar_estado:
-        st.markdown(f"""
-        <div style="display:flex;gap:20px;margin-top:8px;margin-bottom:24px;">
-          <span style="font-size:0.85rem;"><span style="display:inline-block;width:14px;height:14px;background:#2ECC71;border-radius:3px;vertical-align:middle;margin-right:6px;"></span>Aprobado (≥5.5)</span>
-          <span style="font-size:0.85rem;"><span style="display:inline-block;width:14px;height:14px;background:{NARANJO};border-radius:3px;vertical-align:middle;margin-right:6px;"></span>Mejorar (≥4.0)</span>
-          <span style="font-size:0.85rem;"><span style="display:inline-block;width:14px;height:14px;background:{TERRACOTA};border-radius:3px;vertical-align:middle;margin-right:6px;"></span>Reprobado (&lt;4.0)</span>
-        </div>
-        """, unsafe_allow_html=True)
+        leyenda_items += [
+            ("#2ECC71", "Aprobado (≥5.5)"),
+            (NARANJO,   "Mejorar (≥4.0)"),
+            (TERRACOTA, "Reprobado (<4.0)"),
+        ]
+    if tiene_flags:
+        leyenda_items += [
+            ("#8B0000", "🚫 No recomendado"),
+            ("#2a2a2a", "⛔ No autorizado"),
+        ]
+    if leyenda_items:
+        items_html = "".join([
+            f'<span style="font-size:1rem;margin-right:20px;">'
+            f'<span style="display:inline-block;width:16px;height:16px;background:{c};border-radius:3px;vertical-align:middle;margin-right:6px;"></span>{lbl}</span>'
+            for c, lbl in leyenda_items
+        ])
+        st.markdown(f'<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:8px;margin-bottom:24px;">{items_html}</div>',
+                    unsafe_allow_html=True)
 
     # ── Tabla detalle ──────────────────────────────────────────────────────────
     with st.expander("📋 Ver tabla completa de la reunión"):
@@ -918,6 +977,12 @@ for col, area, label in [(a1,"TERRENO","🔵 Terreno"),(a2,"RRHH","🟣 RRHH"),(
         st.markdown(f"**{label}**")
         st.plotly_chart(top5_bar(df_f, area, COLOR_AREA[area]), use_container_width=True)
 
+st.markdown(f"""
+<div style="font-size:0.8rem;color:{AZUL_MED};margin-top:-8px;margin-bottom:4px;">
+  <span style="margin-right:16px;">⛔ = No autorizado &nbsp;·&nbsp; 🚫 = No recomendado — aparecen con su nota histórica pero están vetados</span>
+</div>
+""", unsafe_allow_html=True)
+
 st.markdown('<hr class="divider-naranja">', unsafe_allow_html=True)
 
 st.markdown('<div class="seccion-titulo">🔧 Top 5 subcontratos por actividad</div>', unsafe_allow_html=True)
@@ -942,15 +1007,20 @@ st.markdown('<hr class="divider-naranja">', unsafe_allow_html=True)
 # ══════════════════════════════════════════════════════════════════════════════
 st.markdown('<div class="seccion-titulo">Ranking general de subcontratos</div>', unsafe_allow_html=True)
 ranking = (df_f.groupby("SUBCONTRATO")
-           .agg(Evaluaciones=("NOTA_FINAL","count"), Nota_promedio=("NOTA_FINAL","mean"), Ultimo_estado=("ESTADO","last"))
+           .agg(Evaluaciones=("NOTA_FINAL","count"), Nota_promedio=("NOTA_FINAL","mean"),
+                Ultimo_estado=("ESTADO","last"), Alerta=("FLAG","first"))
            .reset_index().sort_values("Nota_promedio", ascending=False))
 ranking["Nota_promedio"] = ranking["Nota_promedio"].round(2)
 
-def color_estado(val):
-    _mapa = {"APROBADO":"#d4edda","MEJORAR":"#fff3cd","REPROBADO":"#f8d7da"}
-    return f"background-color: {_mapa.get(val,'')}"
-try:    styled = ranking.style.map(color_estado, subset=["Ultimo_estado"])
-except: styled = ranking.style.applymap(color_estado, subset=["Ultimo_estado"])
+def _color_ranking(row):
+    flag = row.get("Alerta","")
+    if flag == "NO AUTORIZADO":  return ["background-color:#2a2a2a;color:white"]*len(row)
+    if flag == "NO RECOMENDADO": return ["background-color:#fde8e8"]*len(row)
+    c = {"APROBADO":"#d4edda","MEJORAR":"#fff3cd","REPROBADO":"#f8d7da"}.get(row.get("Ultimo_estado",""),"")
+    return [f"background-color:{c}"]*len(row)
+try:    styled = ranking.style.apply(_color_ranking, axis=1)
+except: styled = ranking
+st.markdown(f'<div style="font-size:0.8rem;color:{AZUL_MED};margin-bottom:6px;">⛔ fondo oscuro = No autorizado &nbsp;·&nbsp; 🚫 fondo rojo claro = No recomendado</div>', unsafe_allow_html=True)
 st.dataframe(styled, use_container_width=True, height=400)
 
 with st.expander("Ver detalle completo"):
