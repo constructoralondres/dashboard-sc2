@@ -198,8 +198,8 @@ def cargar_datos(file_bytes):
 
 # ── Header con logo ────────────────────────────────────────────────────────────
 # Intenta logo.png primero, luego logo.jpg
-logo_path = next((p for p in [Path("logo.png"), Path("logo.jpg"), Path("logo.jpeg")] if p.exists()), None)
-if logo_path is not None:
+logo_path = Path("logo.png") if Path("logo.png").exists() else Path("logo.jpg")
+if logo_path.exists():
     ext = "png" if logo_path.suffix == ".png" else "jpeg"
     with open(logo_path, "rb") as f:
         logo_b64 = base64.b64encode(f.read()).decode()
@@ -281,6 +281,70 @@ for col, label, val, sub in kpis:
       <div class="kpi-value">{val}</div>
       <div class="kpi-sub">{sub}</div>
     </div>""", unsafe_allow_html=True)
+
+st.markdown('<hr class="divider-naranja">', unsafe_allow_html=True)
+
+# ── Verificador de Subcontratos ────────────────────────────────────────────────
+st.markdown('''
+<div style="font-size:1.6rem; font-weight:800; color:#1A1846; margin-bottom:4px;">
+  🔍 Verificador de Subcontratos
+</div>
+<div class="seccion-sub">Busca un subcontrato antes de cotizar — verifica su estado en el sistema</div>
+''', unsafe_allow_html=True)
+
+df_todos_ver = cargar_datos(excel_path.read_bytes())
+nombres_lista = sorted(df_todos_ver["SUBCONTRATO"].dropna().unique().tolist())
+ruts_lista    = sorted(df_todos_ver["RUT"].astype(str).dropna().unique().tolist()) if "RUT" in df_todos_ver.columns else []
+
+col_b1, col_b2 = st.columns(2)
+with col_b1:
+    buscar_nombre = st.selectbox(
+        "Buscar por nombre",
+        options=[""] + nombres_lista,
+        index=0,
+        format_func=lambda x: "Escribe o selecciona un nombre..." if x == "" else x,
+    )
+with col_b2:
+    buscar_rut = st.selectbox(
+        "Buscar por RUT",
+        options=[""] + ruts_lista,
+        index=0,
+        format_func=lambda x: "Escribe o selecciona un RUT..." if x == "" else x,
+    )
+
+if buscar_nombre or buscar_rut:
+    df_busq = df_todos_ver.copy()
+    if buscar_nombre:
+        df_busq = df_busq[df_busq["SUBCONTRATO"] == buscar_nombre]
+    if buscar_rut:
+        df_busq = df_busq[df_busq["RUT"].astype(str) == buscar_rut]
+
+    if df_busq.empty:
+        st.info("No se encontraron resultados.")
+    else:
+        for _, row in df_busq.drop_duplicates(subset=["SUBCONTRATO"]).iterrows():
+            estado = row["ESTADO"]
+            if estado == "APROBADO":
+                color_bg, color_txt, icono = "#d4edda", "#155724", "✅"
+            elif estado == "MEJORAR":
+                color_bg, color_txt, icono = "#fff3cd", "#856404", "⚠️"
+            elif estado == "REPROBADO":
+                color_bg, color_txt, icono = "#f8d7da", "#721c24", "❌"
+            elif estado == "NO RECOMENDADO":
+                color_bg, color_txt, icono = "#fde8e8", "#8B0000", "🚫"
+            else:
+                color_bg, color_txt, icono = "#2a2a2a", "#ffffff", "⛔"
+
+            st.markdown(f"""
+            <div style="background:{color_bg}; border-left:4px solid {color_txt}; color:{color_txt};
+                        padding:14px 20px; border-radius:8px; margin-bottom:8px;
+                        font-family:'Hanken Grotesk',sans-serif;">
+                <div style="font-size:1.05rem; font-weight:700;">{icono} {row["SUBCONTRATO"]}</div>
+                <div style="font-size:0.82rem; margin-top:4px;">
+                    RUT: {row["RUT"]} &nbsp;|&nbsp; Estado: <strong>{estado}</strong>
+                    &nbsp;|&nbsp; Actividad: {row.get("ACTIVIDAD","—")} &nbsp;|&nbsp; Obra: {row["OBRA"]}
+                </div>
+            </div>""", unsafe_allow_html=True)
 
 st.markdown('<hr class="divider-naranja">', unsafe_allow_html=True)
 
@@ -401,109 +465,62 @@ with st.expander("Ver detalle completo"):
     st.dataframe(df_f[cols_show].sort_values(["OBRA","N_EVA"]), use_container_width=True)
 
 
-# ── Verificador de subcontratos ────────────────────────────────────────────────
-st.markdown('<hr class="divider-naranja">', unsafe_allow_html=True)
-st.markdown('''
-<div class="seccion-titulo">🔍 Verificador de Subcontratos</div>
-<div class="seccion-sub">Busca un subcontrato antes de cotizar — verifica su estado en el sistema</div>
-''', unsafe_allow_html=True)
-
-col_b1, col_b2 = st.columns(2)
-with col_b1:
-    buscar_nombre = st.text_input("Buscar por nombre", placeholder="Ej: TERRANOVA CONTRATISTAS")
-with col_b2:
-    buscar_rut = st.text_input("Buscar por RUT", placeholder="Ej: 77.333.607-5")
-
-df_todos = cargar_datos(excel_path.read_bytes())
-
-if buscar_nombre or buscar_rut:
-    df_busq = df_todos.copy()
-    if buscar_nombre:
-        df_busq = df_busq[df_busq["SUBCONTRATO"].str.upper().str.contains(buscar_nombre.strip().upper(), na=False)]
-    if buscar_rut:
-        df_busq = df_busq[df_busq["RUT"].astype(str).str.upper().str.contains(buscar_rut.strip().upper(), na=False)]
-
-    if df_busq.empty:
-        st.info("No se encontraron resultados.")
-    else:
-        for _, row in df_busq.drop_duplicates(subset=["SUBCONTRATO"]).iterrows():
-            estado = row["ESTADO"]
-            if estado == "APROBADO":
-                color_bg, color_txt, icono = "#d4edda", "#155724", "✅"
-            elif estado == "MEJORAR":
-                color_bg, color_txt, icono = "#fff3cd", "#856404", "⚠️"
-            elif estado == "REPROBADO":
-                color_bg, color_txt, icono = "#f8d7da", "#721c24", "❌"
-            elif estado == "NO RECOMENDADO":
-                color_bg, color_txt, icono = "#fde8e8", "#8B0000", "🚫"
-            else:
-                color_bg, color_txt, icono = "#2a2a2a", "#ffffff", "⛔"
-
-            st.markdown(f"""
-            <div style="background:{color_bg}; border-left:4px solid {color_txt}; color:{color_txt};
-                        padding:14px 20px; border-radius:8px; margin-bottom:8px;
-                        font-family:'Hanken Grotesk',sans-serif;">
-                <div style="font-size:1.05rem; font-weight:700;">{icono} {row["SUBCONTRATO"]}</div>
-                <div style="font-size:0.82rem; margin-top:4px;">
-                    RUT: {row["RUT"]} &nbsp;|&nbsp; Estado: <strong>{estado}</strong>
-                    &nbsp;|&nbsp; Actividad: {row.get("ACTIVIDAD","—")} &nbsp;|&nbsp; Obra: {row["OBRA"]}
-                </div>
-            </div>""", unsafe_allow_html=True)
-
-st.markdown('<hr class="divider-naranja">', unsafe_allow_html=True)
-
-# ── No Recomendados ────────────────────────────────────────────────────────────
+# ── No Recomendados / No Autorizados ──────────────────────────────────────────
 df_todos2 = cargar_datos(excel_path.read_bytes())
 df_no_rec = df_todos2[df_todos2["ESTADO"] == "NO RECOMENDADO"].drop_duplicates(subset=["SUBCONTRATO"])
 df_no_aut = df_todos2[df_todos2["ESTADO"] == "NO AUTORIZADO"].drop_duplicates(subset=["SUBCONTRATO"])
 
-st.markdown(f'''
-<div style="background:#fde8e8; border-left:5px solid #8B0000; border-radius:10px;
-            padding:18px 24px; margin-bottom:16px;">
-  <div style="font-size:1.15rem; font-weight:800; color:#8B0000;">
-    🚫 No Recomendados ({len(df_no_rec)})
-  </div>
-  <div style="font-size:0.8rem; color:#8B0000; margin-top:2px;">
-    Subcontratos con desempeño deficiente — usar solo con autorización expresa
-  </div>
-</div>''', unsafe_allow_html=True)
+# NO RECOMENDADOS
+st.markdown(f'<div style="font-size:2rem; margin-bottom:4px;">🚫</div>', unsafe_allow_html=True)
+st.markdown(f'<div style="font-size:1.3rem; font-weight:800; color:#8B0000; margin-bottom:4px;">NO RECOMENDADOS ({len(df_no_rec)})</div>', unsafe_allow_html=True)
+st.markdown('<div class="seccion-sub">Subcontratos con desempeño deficiente — usar solo con autorización expresa</div>', unsafe_allow_html=True)
 
 if df_no_rec.empty:
     st.success("No hay subcontratos en esta categoría.")
 else:
-    for _, row in df_no_rec.sort_values("SUBCONTRATO").iterrows():
-        st.markdown(f"""
-        <div style="background:#fde8e8; border-left:4px solid #8B0000; border-radius:8px;
-                    padding:12px 18px; margin-bottom:8px; font-family:'Hanken Grotesk',sans-serif;">
-            <div style="font-size:1rem; font-weight:700; color:#8B0000;">🚫 {row["SUBCONTRATO"]}</div>
-            <div style="font-size:0.82rem; color:#5a0000; margin-top:4px;">
-                RUT: {row["RUT"]} &nbsp;|&nbsp; Actividad: {row.get("ACTIVIDAD","—")} &nbsp;|&nbsp; Obra: {row["OBRA"]}
-            </div>
-        </div>""", unsafe_allow_html=True)
+    filas_rec = df_no_rec.sort_values("SUBCONTRATO").reset_index(drop=True)
+    for i in range(0, len(filas_rec), 2):
+        cols = st.columns(2)
+        for j, col in enumerate(cols):
+            if i + j < len(filas_rec):
+                row = filas_rec.iloc[i + j]
+                col.markdown(f"""
+                <div style="background:#fde8e8; border:1px solid #c0392b; border-radius:8px;
+                            padding:14px 16px; font-family:'Hanken Grotesk',sans-serif; height:100%;">
+                    <div style="font-size:1rem; font-weight:700; color:#8B0000;">🚫 {row["SUBCONTRATO"]}</div>
+                    <div style="font-size:0.8rem; color:#5a0000; margin-top:6px;">
+                        <b>RUT:</b> {row["RUT"]}<br>
+                        <b>Actividad:</b> {row.get("ACTIVIDAD","—")}<br>
+                        <b>Obra:</b> {row["OBRA"]}
+                    </div>
+                </div>""", unsafe_allow_html=True)
 
-st.markdown(f'''
-<div style="background:#2a2a2a; border-left:5px solid #888; border-radius:10px;
-            padding:18px 24px; margin-bottom:16px; margin-top:24px;">
-  <div style="font-size:1.15rem; font-weight:800; color:#ffffff;">
-    ⛔ No Autorizados ({len(df_no_aut)})
-  </div>
-  <div style="font-size:0.8rem; color:#aaaaaa; margin-top:2px;">
-    Subcontratos vetados — NO contratar bajo ninguna circunstancia
-  </div>
-</div>''', unsafe_allow_html=True)
+st.markdown('<hr class="divider-naranja">', unsafe_allow_html=True)
+
+# NO AUTORIZADOS
+st.markdown(f'<div style="font-size:2rem; margin-bottom:4px;">⛔</div>', unsafe_allow_html=True)
+st.markdown(f'<div style="font-size:1.3rem; font-weight:800; color:#1A1846; margin-bottom:4px;">NO AUTORIZADOS ({len(df_no_aut)})</div>', unsafe_allow_html=True)
+st.markdown('<div class="seccion-sub">Subcontratos vetados — NO contratar bajo ninguna circunstancia</div>', unsafe_allow_html=True)
 
 if df_no_aut.empty:
     st.success("No hay subcontratos en esta categoría.")
 else:
-    for _, row in df_no_aut.sort_values("SUBCONTRATO").iterrows():
-        st.markdown(f"""
-        <div style="background:#2a2a2a; border-left:4px solid #888; border-radius:8px;
-                    padding:12px 18px; margin-bottom:8px; font-family:'Hanken Grotesk',sans-serif;">
-            <div style="font-size:1rem; font-weight:700; color:#ffffff;">⛔ {row["SUBCONTRATO"]}</div>
-            <div style="font-size:0.82rem; color:#bbbbbb; margin-top:4px;">
-                RUT: {row["RUT"]} &nbsp;|&nbsp; Actividad: {row.get("ACTIVIDAD","—")} &nbsp;|&nbsp; Obra: {row["OBRA"]}
-            </div>
-        </div>""", unsafe_allow_html=True)
+    filas_aut = df_no_aut.sort_values("SUBCONTRATO").reset_index(drop=True)
+    for i in range(0, len(filas_aut), 2):
+        cols = st.columns(2)
+        for j, col in enumerate(cols):
+            if i + j < len(filas_aut):
+                row = filas_aut.iloc[i + j]
+                col.markdown(f"""
+                <div style="background:#2a2a2a; border:1px solid #555; border-radius:8px;
+                            padding:14px 16px; font-family:'Hanken Grotesk',sans-serif; height:100%;">
+                    <div style="font-size:1rem; font-weight:700; color:#ffffff;">⛔ {row["SUBCONTRATO"]}</div>
+                    <div style="font-size:0.8rem; color:#bbbbbb; margin-top:6px;">
+                        <b>RUT:</b> {row["RUT"]}<br>
+                        <b>Actividad:</b> {row.get("ACTIVIDAD","—")}<br>
+                        <b>Obra:</b> {row["OBRA"]}
+                    </div>
+                </div>""", unsafe_allow_html=True)
 
 
 # ── Footer ─────────────────────────────────────────────────────────────────────
