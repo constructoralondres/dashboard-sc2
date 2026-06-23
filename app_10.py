@@ -212,6 +212,92 @@ def cargar_datos(file_bytes):
     return df
 
 
+# (fondo dinámico se aplica más abajo, después de definir obras_sel)
+
+# ── Header con logo ────────────────────────────────────────────────────────────
+logo_path = next((p for p in [Path("logo.png"), Path("logo.jpg"), Path("logo.jpeg")] if p.exists()), None)
+if logo_path is not None:
+    ext = "png" if logo_path.suffix == ".png" else "jpeg"
+    with open(logo_path, "rb") as f:
+        logo_b64 = base64.b64encode(f.read()).decode()
+    logo_html = f'<img src="data:image/{ext};base64,{logo_b64}" style="height:70px;">'
+else:
+    logo_html = '<span style="color:#E18426; font-size:2rem;">🏗️</span>'
+
+# Placeholder: se llena con el nombre de obra después de leer el sidebar
+_header_placeholder = st.empty()
+
+# ── Upload ─────────────────────────────────────────────────────────────────────
+excel_path = Path("consolidado.xlsx")
+if not excel_path.exists():
+    st.error("No se encontró el archivo consolidado.xlsx")
+    st.stop()
+
+df = cargar_datos(excel_path.read_bytes())
+
+# ── Fotos de obras ─────────────────────────────────────────────────────────────
+# Mapeo: nombre de obra (en Title Case, como llega del df) → archivo de imagen
+# Las imágenes deben estar en la misma carpeta que app.py con los nombres indicados.
+# Ejemplo: {"Conjunto Habitacional El Pino": "obra_pino.jpg"}
+FOTOS_OBRAS: dict = {
+    # Clave: nombre exacto de la obra tal como aparece en el Excel despues de .str.title()
+    # Valor: nombre del archivo de imagen en la misma carpeta que app.py
+    "Guillermo Feliu":  "foto_guillermo_feliu.jpeg",
+    "Jose Venturelli":  "foto_jose_venturelli.jpg",
+    "Pedro Luna Ii":    "foto_pedro_luna_ii.JPG",
+    "Alfredo Helsby":   "foto_alfredo_helsby.JPG",
+    "Armando Uribe":    "foto_armando_uribe.jpg",
+    "Enrique Maturana": "foto_enrique_maturana.JPG",
+    "Enriqueta Petit":  "foto_enriqueta_petit.JPG",
+    # Obras sin foto: Colina Ii, Delia Del Carril, Pedro Luna I -> mantienen fondo base
+}
+
+def obra_foto_b64(nombre_obra: str) -> str | None:
+    """Devuelve la imagen de la obra en base64, o None si no existe."""
+    archivo = FOTOS_OBRAS.get(nombre_obra)
+    if archivo:
+        p = Path(archivo)
+        if p.exists():
+            ext = p.suffix.lower().lstrip(".")
+            if ext == "jpg":
+                ext = "jpeg"
+            with open(p, "rb") as f:
+                return f"data:image/{ext};base64,{base64.b64encode(f.read()).decode()}"
+    return None
+
+# ── Filtros sidebar ────────────────────────────────────────────────────────────
+with st.sidebar:
+    st.markdown("### Filtros")
+    obras_disp = sorted(df["OBRA"].dropna().unique())
+
+    TODAS = "📋 Todas las obras"
+    opciones = [TODAS] + list(obras_disp)
+
+    if "obra_sel_box" not in st.session_state:
+        st.session_state["obra_sel_box"] = TODAS
+
+    obra_elegida = st.selectbox(
+        "Seleccionar obra",
+        options=opciones,
+        index=opciones.index(st.session_state.get("obra_sel_box", TODAS)),
+        key="obra_sel_box",
+    )
+
+    # obras_sel: lista usada en el resto del código
+    if obra_elegida == TODAS:
+        obras_sel = list(obras_disp)
+    else:
+        obras_sel = [obra_elegida]
+
+    # Miniatura en sidebar cuando se elige una obra con foto
+    if len(obras_sel) == 1:
+        foto_b64_sidebar = obra_foto_b64(obras_sel[0])
+        if foto_b64_sidebar:
+            st.markdown(
+                f'<img src="{foto_b64_sidebar}" style="width:100%; border-radius:8px; margin-top:10px;" title="{obras_sel[0]}">',
+                unsafe_allow_html=True,
+            )
+
 # ── Fondo dinámico según selección de obras ───────────────────────────────────
 if len(obras_sel) == 1:
     _foto_fondo = obra_foto_b64(obras_sel[0])
@@ -254,23 +340,14 @@ else:
     </style>
     """, unsafe_allow_html=True)
 
-# ── Header con logo ────────────────────────────────────────────────────────────
-# Intenta logo.png primero, luego logo.jpg
-logo_path = next((p for p in [Path("logo.png"), Path("logo.jpg"), Path("logo.jpeg")] if p.exists()), None)
-if logo_path is not None:
-    ext = "png" if logo_path.suffix == ".png" else "jpeg"
-    with open(logo_path, "rb") as f:
-        logo_b64 = base64.b64encode(f.read()).decode()
-    logo_html = f'<img src="data:image/{ext};base64,{logo_b64}" style="height:70px;">'
-else:
-    logo_html = '<span style="color:#E18426; font-size:2rem;">🏗️</span>'
-
+# ── Header: se llena aquí con obras_sel ya definida ───────────────────────────
 _subtitulo_obra = (
-    f'<div style="font-size: 2rem; font-weight: 800; color: {AZUL}; line-height: 1.1; margin-top: 6px;">'
+    f'<div style="font-size: 1.6rem; font-weight: 800; color: {NARANJO}; '
+    f'line-height: 1.2; margin-top: 4px; letter-spacing: 0.02em;">'
     f'{obras_sel[0].upper()}</div>'
 ) if len(obras_sel) == 1 else ""
 
-st.markdown(f"""
+_header_placeholder.markdown(f"""
 <div style="
   background-color: white;
   padding: 24px 32px;
@@ -294,74 +371,6 @@ st.markdown(f"""
   </div>
 </div>
 """, unsafe_allow_html=True)
-
-# ── Upload ─────────────────────────────────────────────────────────────────────
-excel_path = Path("consolidado.xlsx")
-if not excel_path.exists():
-    st.error("No se encontró el archivo consolidado.xlsx")
-    st.stop()
-
-df = cargar_datos(excel_path.read_bytes())
-
-# ── Fotos de obras ─────────────────────────────────────────────────────────────
-# Mapeo: nombre de obra (en Title Case, como llega del df) → archivo de imagen
-# Las imágenes deben estar en la misma carpeta que app.py con los nombres indicados.
-# Ejemplo: {"Conjunto Habitacional El Pino": "obra_pino.jpg"}
-FOTOS_OBRAS: dict = {
-    # Clave: nombre exacto de la obra tal como aparece en el Excel (Title Case)
-    # Valor: nombre del archivo de imagen en la misma carpeta que app.py
-    "Guillermo Feliu":  "foto_guillermo_feliu.jpeg",
-    "Jose Venturelli":  "foto_jose_venturelli.jpg",
-    "Pedro Luna Ii":    "foto_pedro_luna_ii.JPG",
-    "Alfredo Helsby":   "foto_alfredo_helsby.JPG",
-    "Armando Uribe":    "foto_armando_uribe.jpg",
-    "Enrique Maturana": "foto_enrique_maturana.JPG",
-    "Enriqueta Petit":  "foto_enriqueta_petit.JPG",
-    # Si el Excel usa prefijo distinto (ej. "Conjunto Guillermo Feliu"),
-    # ajusta la clave para que coincida exactamente con str.title()
-}
-
-def obra_foto_b64(nombre_obra: str) -> str | None:
-    """Devuelve la imagen de la obra en base64, o None si no existe."""
-    archivo = FOTOS_OBRAS.get(nombre_obra)
-    if archivo:
-        p = Path(archivo)
-        if p.exists():
-            ext = p.suffix.lower().lstrip(".")
-            if ext == "jpg":
-                ext = "jpeg"
-            with open(p, "rb") as f:
-                return f"data:image/{ext};base64,{base64.b64encode(f.read()).decode()}"
-    return None
-
-# ── Filtros sidebar ────────────────────────────────────────────────────────────
-with st.sidebar:
-    st.markdown("### Filtros")
-    obras_disp = sorted(df["OBRA"].dropna().unique())
-
-    # Botón para seleccionar todas las obras
-    if st.button("📋 Todas las obras", use_container_width=True):
-        st.session_state["obras_sel"] = list(obras_disp)
-
-    if "obras_sel" not in st.session_state:
-        st.session_state["obras_sel"] = list(obras_disp)
-
-    # Mostrar cada obra con su foto (si existe) en el multiselect
-    obras_sel = st.multiselect(
-        "Seleccionar obras",
-        options=obras_disp,
-        default=st.session_state["obras_sel"],
-        key="obras_sel",
-    )
-
-    # Mostrar miniaturas de las obras seleccionadas en el sidebar
-    for obra in obras_sel:
-        foto_b64 = obra_foto_b64(obra)
-        if foto_b64:
-            st.markdown(
-                f'<img src="{foto_b64}" style="width:100%; border-radius:8px; margin-bottom:6px;" title="{obra}">',
-                unsafe_allow_html=True,
-            )
 
 # ── Filtro de datos (solo por obra; estado siempre incluye todos) ───────────────
 estados_todos = ["APROBADO", "MEJORAR", "REPROBADO"]
