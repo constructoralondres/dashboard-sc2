@@ -8,6 +8,7 @@ from io import BytesIO
 import base64
 from pathlib import Path
 from PIL import Image
+from criterios_config import CRITERIOS, ETIQUETAS_CORTAS, TODOS_CRITERIOS
 
 # ── Paleta Constructora Londres ────────────────────────────────────────────────
 AZUL     = "#1A1846"
@@ -17,79 +18,6 @@ GRIS     = "#ECECEC"
 AZUL_MED = "#3D3B65"
 TERRACOTA= "#B04D2F"
 ARENA    = "#D9B98A"
-
-# ── Criterios de detalle por área ──────────────────────────────────────────────
-CRITERIOS = {
-    "TERRENO": [
-        "Cumple los plazos internos de ejecución de la obra.",
-        "Realiza trabajos en forma limpia, sin dañar trabajos ya realizados.",
-        "Asiste a las reuniones de planificación.",
-        "Cuenta con Supervisores competentes.",
-        "Puntualidad.",
-    ],
-    "RRHH": [
-        "Entrega certificado de la Inspección del Trabajo (Formulario n°30 y 30-1).",
-        "Mantiene pactos de horas extras actualizado.",
-        "Entrega certificado de Deuda Tributaria con sus respaldos, emitido por Tesorería General Republica.",
-        "Entrega Copia de la entrega del Reglamento  Interno a los Trabajadores.",
-        "Mantiene libro de Asistencia al dia.",
-        "Entrega certificado y mantiene planilla de Leyes Sociales al día.",
-        "Realiza y entrega Listado de Trabajadores Vigentes en obra mensual.",
-        "Entrega Formulario  Pago de IVA (n°29).",
-        "Presenta y entrega respaldo de Libro de Remuneraciones.",
-        "Presentación de la Directiva de Funcionamiento con respaldo de jornada excepcional aprobada.",
-        "Tiene curso SO10 con certificado vigente y en regla ",
-    ],
-    "SSOMA": [
-        "Cumple con Implementación documental DS 44",
-        "Participa en charlas y capacitaciones de obra.",
-        "Manejo de accidentes con ingresos a mutualidad en obra",
-        "Cumple con todos los protocolos Minsal que le apliquen",
-        "Cumple con plan personalizado de actividades (foco en obra).",
-        "Acata indicaciones de normas de seguridad  del depto SSOMA en Terreno.",
-        "Colabora y participa en actividades extra de gestión en SSOMA.",
-        "Utiliza de EPP y soluciones de seguridad en Terreno.",
-    ],
-    "CALIDAD": [
-        "Cumple con las exigencias de calidad.",
-        "Entrega protocolos",
-        "Resuelve No Conformidades",
-        "Demuestra conocimiento técnico.",
-    ],
-}
-
-ETIQUETAS_CORTAS = {
-    "Cumple los plazos internos de ejecución de la obra.": "Plazos",
-    "Realiza trabajos en forma limpia, sin dañar trabajos ya realizados.": "Limpieza",
-    "Asiste a las reuniones de planificación.": "Reuniones",
-    "Cuenta con Supervisores competentes.": "Supervisores",
-    "Puntualidad.": "Puntualidad",
-    "Entrega certificado de la Inspección del Trabajo (Formulario n°30 y 30-1).": "F30/30-1",
-    "Mantiene pactos de horas extras actualizado.": "Horas extras",
-    "Entrega certificado de Deuda Tributaria con sus respaldos, emitido por Tesorería General Republica.": "Deuda tributaria",
-    "Entrega Copia de la entrega del Reglamento  Interno a los Trabajadores.": "Reglamento interno",
-    "Mantiene libro de Asistencia al dia.": "Libro asistencia",
-    "Entrega certificado y mantiene planilla de Leyes Sociales al día.": "Leyes sociales",
-    "Realiza y entrega Listado de Trabajadores Vigentes en obra mensual.": "Listado trab.",
-    "Entrega Formulario  Pago de IVA (n°29).": "IVA F29",
-    "Presenta y entrega respaldo de Libro de Remuneraciones.": "Libro remuner.",
-    "Presentación de la Directiva de Funcionamiento con respaldo de jornada excepcional aprobada.": "Directiva jornada",
-    "Tiene curso SO10 con certificado vigente y en regla ": "Curso SO10",
-    "Cumple con Implementación documental DS 44": "DS44",
-    "Participa en charlas y capacitaciones de obra.": "Charlas/Cap.",
-    "Manejo de accidentes con ingresos a mutualidad en obra": "Accidentes",
-    "Cumple con todos los protocolos Minsal que le apliquen": "Minsal",
-    "Cumple con plan personalizado de actividades (foco en obra).": "Plan personal.",
-    "Acata indicaciones de normas de seguridad  del depto SSOMA en Terreno.": "Normas SSOMA",
-    "Colabora y participa en actividades extra de gestión en SSOMA.": "Gestión SSOMA",
-    "Utiliza de EPP y soluciones de seguridad en Terreno.": "EPP",
-    "Cumple con las exigencias de calidad.": "Exigencias cal.",
-    "Entrega protocolos": "Protocolos",
-    "Resuelve No Conformidades": "No conformid.",
-    "Demuestra conocimiento técnico.": "Conocim. técn.",
-}
-
-TODOS_CRITERIOS = [c for lista in CRITERIOS.values() for c in lista]
 
 # ── Favicon ────────────────────────────────────────────────────────────────────
 _favicon_path = next((p for p in [Path("logo_icono.jpeg"), Path("logo_icono.png"), Path("logo.jpeg"), Path("logo.jpg")] if p.exists()), None)
@@ -173,29 +101,38 @@ def top5_bar(df_area, area, color):
     fig.update_layout(xaxis_range=[0, 7], height=240, showlegend=False)
     return plotly_layout(fig)
 
+def _obtener_filas_firebase_seguro():
+    """Trae las evaluaciones cerradas hechas desde la app (Firebase). Si Firebase
+    no está configurado todavía (sin secrets) o falla la conexión, devuelve una
+    lista vacía sin romper el dashboard — el histórico de Excel sigue funcionando igual."""
+    try:
+        import firebase_db as fdb
+        return fdb.obtener_todo_el_historial_app()
+    except Exception:
+        return []
+
+
 @st.cache_data
 def cargar_datos(file_bytes):
-    wb = openpyxl.load_workbook(BytesIO(file_bytes), read_only=True, data_only=True)
-    ws = wb["Consolidado"]
-    rows = list(ws.iter_rows(values_only=True))
-    header = rows[5]
-    data = [r for r in rows[6:] if r[0] is not None and r[19] in ("APROBADO","MEJORAR","REPROBADO","NO RECOMENDADO","NO AUTORIZADO")]
-    df = pd.DataFrame(data, columns=header)
-    df = df.rename(columns={
-        "N° EVA": "N_EVA", "CÓDIGO OBRA": "CODIGO_OBRA", "FECHA EVALUACIÓN": "FECHA",
-        "NOMBRE SUBCONTRATO": "SUBCONTRATO", "NOTA FINAL (1 a 7)": "NOTA_FINAL",
-        "ESTADO": "ESTADO", "TERRENO": "TERRENO", "RRHH": "RRHH", "SSOMA": "SSOMA", "CALIDAD": "CALIDAD",
-    })
-    num_cols = ["NOTA_FINAL","TERRENO","RRHH","SSOMA","CALIDAD"] + TODOS_CRITERIOS
-    for col in num_cols:
-        if col in df.columns:
-            df[col] = pd.to_numeric(df[col], errors="coerce")
-    df["N_EVA"]       = pd.to_numeric(df["N_EVA"], errors="coerce")
-    df["OBRA"]        = df["OBRA"].str.strip().str.title()
-    df["SUBCONTRATO"] = df["SUBCONTRATO"].str.strip().str.title()
-    df["ESTADO"]      = df["ESTADO"].str.strip().str.upper()
-    if "ACTIVIDAD" in df.columns:
-        df["ACTIVIDAD"] = df["ACTIVIDAD"].str.strip().str.title()
+    import historico
+    df_excel = historico.leer_excel_bruto(file_bytes)
+
+    filas_fb = _obtener_filas_firebase_seguro()
+    if filas_fb:
+        df_fb = pd.DataFrame(filas_fb)
+        num_cols = ["NOTA_FINAL","TERRENO","RRHH","SSOMA","CALIDAD"] + TODOS_CRITERIOS
+        for col in num_cols:
+            if col in df_fb.columns:
+                df_fb[col] = pd.to_numeric(df_fb[col], errors="coerce")
+        df_fb["N_EVA"] = pd.to_numeric(df_fb["N_EVA"], errors="coerce")
+        for col in ["OBRA", "SUBCONTRATO", "ACTIVIDAD"]:
+            if col in df_fb.columns:
+                df_fb[col] = df_fb[col].astype(str).str.strip().str.title()
+        if "ESTADO" in df_fb.columns:
+            df_fb["ESTADO"] = df_fb["ESTADO"].astype(str).str.strip().str.upper()
+        df = pd.concat([df_excel, df_fb], ignore_index=True, sort=False)
+    else:
+        df = df_excel
 
     # Marcar subcontratos que tienen alguna fila NO RECOMENDADO o NO AUTORIZADO
     sc_no_rec = set(df[df["ESTADO"]=="NO RECOMENDADO"]["SUBCONTRATO"].str.upper())
@@ -252,10 +189,7 @@ def obra_foto_b64(nombre_obra: str):
     return None
 
 # ── Sidebar ────────────────────────────────────────────────────────────────────
-ORDEN_OBRAS = [
-    "Delia Del Carril","Colina Ii","Armando Uribe","Pedro Luna I","Alfredo Helsby",
-    "José Venturelli","Enrique Maturana","Enriqueta Petit","Pedro Luna Ii","Guillermo Feliú","Adriana Olguín",
-]
+from obras_config import ORDEN_OBRAS
 
 if "obras_activas" not in st.session_state:
     st.session_state["obras_activas"] = set()
