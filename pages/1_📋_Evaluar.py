@@ -25,7 +25,7 @@ auth.logout_button()
 
 rol = usuario["rol"]
 if rol == "admin":
-    st.info("Tu usuario es desarrollador. Usa la página **Admin Evaluaciones** para abrir/cerrar evaluaciones.")
+    st.info("Tu usuario es desarrollador. Usa la página **Desarrollador** para abrir/cerrar evaluaciones.")
     st.stop()
 
 area = ROL_AREA.get(rol)
