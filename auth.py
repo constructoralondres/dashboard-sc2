@@ -5,10 +5,26 @@
 # ══════════════════════════════════════════════════════════════════════════════
 import streamlit as st
 import bcrypt
+from pathlib import Path
 
 import firebase_db as fdb
 
 SESSION_KEY = "eva_sc_usuario"
+
+
+def _encabezado_login():
+    """Logo + botón para volver al dashboard, mostrado arriba de cualquier
+    pantalla de login/bootstrap."""
+    col_logo, col_btn = st.columns([3, 2])
+    with col_logo:
+        logo_path = next((p for p in [Path("logo.png"), Path("logo.jpg"), Path("logo.jpeg")] if p.exists()), None)
+        if logo_path:
+            st.image(str(logo_path), width=160)
+    with col_btn:
+        st.markdown("<div style='padding-top:18px; text-align:right;'>", unsafe_allow_html=True)
+        st.page_link("app_10.py", label="← Volver al dashboard", icon="🏠")
+        st.markdown("</div>", unsafe_allow_html=True)
+    st.markdown("<hr>", unsafe_allow_html=True)
 
 
 def hash_password(password: str) -> str:
@@ -39,6 +55,7 @@ def _hay_usuarios() -> bool:
 def _pantalla_bootstrap_admin():
     """Primera vez que se usa el sistema: no hay ningún usuario cargado todavía.
     Permite crear el primer administrador usando la clave maestra de secrets."""
+    _encabezado_login()
     st.warning("Aún no hay usuarios configurados. Crea la cuenta de administrador inicial.")
     with st.form("bootstrap_admin"):
         clave_maestra = st.text_input("Clave maestra de configuración", type="password",
@@ -76,6 +93,7 @@ def login_form(titulo: str = "Iniciar sesión"):
         _pantalla_bootstrap_admin()
         return False
 
+    _encabezado_login()
     st.markdown(f"### {titulo}")
     with st.form("login_form"):
         username = st.text_input("Usuario")
