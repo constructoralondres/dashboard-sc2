@@ -8,6 +8,7 @@ import bcrypt
 from pathlib import Path
 
 import firebase_db as fdb
+from criterios_config import ROL_LABELS
 
 SESSION_KEY = "eva_sc_usuario"
 
@@ -56,15 +57,15 @@ def _pantalla_bootstrap_admin():
     """Primera vez que se usa el sistema: no hay ningún usuario cargado todavía.
     Permite crear el primer administrador usando la clave maestra de secrets."""
     _encabezado_login()
-    st.warning("Aún no hay usuarios configurados. Crea la cuenta de administrador inicial.")
+    st.warning("Aún no hay usuarios configurados. Crea la cuenta de desarrollador inicial.")
     with st.form("bootstrap_admin"):
         clave_maestra = st.text_input("Clave maestra de configuración", type="password",
                                        help="La misma que definiste en los secrets de Streamlit (setup_key)")
-        username = st.text_input("Usuario admin (ej: cesar)")
+        username = st.text_input("Usuario desarrollador (ej: cesar)")
         nombre = st.text_input("Nombre completo")
         password = st.text_input("Contraseña", type="password")
         password2 = st.text_input("Repite la contraseña", type="password")
-        enviar = st.form_submit_button("Crear administrador")
+        enviar = st.form_submit_button("Crear desarrollador")
     if enviar:
         setup_key = st.secrets.get("setup_key", None)
         if not setup_key or clave_maestra != setup_key:
@@ -80,7 +81,7 @@ def _pantalla_bootstrap_admin():
             username=username, password_hash=hash_password(password),
             nombre=nombre or username, rol="admin", obras=[], activo=True,
         )
-        st.success("Administrador creado. Ya puedes iniciar sesión.")
+        st.success("Desarrollador creado. Ya puedes iniciar sesión.")
         st.rerun()
 
 
@@ -126,7 +127,8 @@ def require_login(roles_permitidos=None, titulo: str = "Iniciar sesión") -> dic
         st.stop()
     usuario = usuario_actual()
     if roles_permitidos and usuario["rol"] not in roles_permitidos:
-        st.error(f"Tu usuario ({usuario['rol']}) no tiene acceso a esta página.")
+        rol_label = ROL_LABELS.get(usuario["rol"], usuario["rol"])
+        st.error(f"Tu usuario ({rol_label}) no tiene acceso a esta página.")
         if st.button("Cerrar sesión"):
             logout()
         st.stop()
@@ -137,6 +139,7 @@ def logout_button(sidebar: bool = True):
     contenedor = st.sidebar if sidebar else st
     usuario = usuario_actual()
     if usuario:
-        contenedor.markdown(f"**{usuario['nombre']}** · _{usuario['rol']}_")
+        rol_label = ROL_LABELS.get(usuario["rol"], usuario["rol"])
+        contenedor.markdown(f"**{usuario['nombre']}** · _{rol_label}_")
         if contenedor.button("Cerrar sesión", key="btn_logout"):
             logout()

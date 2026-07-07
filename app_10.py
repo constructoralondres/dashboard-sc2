@@ -112,7 +112,7 @@ def _obtener_filas_firebase_seguro():
         return []
 
 
-@st.cache_data
+@st.cache_data(ttl=30)
 def cargar_datos(file_bytes):
     import historico
     df_excel = historico.leer_excel_bruto(file_bytes)
@@ -143,6 +143,12 @@ def cargar_datos(file_bytes):
         if s in sc_no_rec: return "NO RECOMENDADO"
         return ""
     df["FLAG"] = df["SUBCONTRATO"].apply(_flag)
+
+    # Un subcontrato NO RECOMENDADO o NO AUTORIZADO queda así en TODAS sus
+    # evaluaciones (pasadas y futuras) — la nota puntual de una obra no debe
+    # "tapar" el veto. El ESTADO de cada fila se sobrescribe con el flag.
+    _mask_flag = df["FLAG"] != ""
+    df.loc[_mask_flag, "ESTADO"] = df.loc[_mask_flag, "FLAG"]
     return df
 
 # ── Logo ───────────────────────────────────────────────────────────────────────
@@ -243,6 +249,28 @@ if _foto_fondo:
 else:
     st.markdown("""<style>.stApp{background-image:none!important;background-color:#ffffff!important;}.stApp::before{display:none;}</style>""", unsafe_allow_html=True)
 
+# ── Última evaluación (fecha) ────────────────────────────────────────────────
+_ultima_eval_html = ""
+if obras_sel:
+    _df_ult = df[df["OBRA"].isin(obras_sel)].copy()
+    _df_ult["_FECHA_DT"] = pd.to_datetime(_df_ult["FECHA"], errors="coerce")
+    if _df_ult["_FECHA_DT"].notna().any():
+        _fila_ult = _df_ult.loc[_df_ult["_FECHA_DT"].idxmax()]
+        _fecha_ult_str = _fila_ult["_FECHA_DT"].strftime("%d-%m-%y")
+        _n_eva_ult = int(_fila_ult["N_EVA"]) if pd.notna(_fila_ult["N_EVA"]) else None
+        if obras_activas_count == 1 and len(obras_sel) == 1:
+            _texto_ult = f"N°{_n_eva_ult} · {_fecha_ult_str}" if _n_eva_ult is not None else _fecha_ult_str
+        else:
+            _obra_ult = str(_fila_ult["OBRA"]).replace(" Ii", " II")
+            _texto_ult = (f"N°{_n_eva_ult} · {_obra_ult} · {_fecha_ult_str}" if _n_eva_ult is not None
+                          else f"{_obra_ult} · {_fecha_ult_str}")
+        _ultima_eval_html = f"""
+        <div style="margin-left:auto; text-align:right; padding-left:16px;">
+          <div style="font-size:0.72rem;font-weight:600;color:{AZUL_MED};text-transform:uppercase;letter-spacing:0.06em;">Última evaluación</div>
+          <div style="font-size:1.05rem;font-weight:800;color:{AZUL};">{_texto_ult}</div>
+        </div>
+        """
+
 # ── Header ─────────────────────────────────────────────────────────────────────
 if obras_activas_count == 1 and len(obras_sel) == 1:
     _sub = f'<div style="font-size:1.6rem;font-weight:800;color:{NARANJO};line-height:1.2;margin-top:4px;letter-spacing:0.02em;">{obras_sel[0].replace(" Ii"," II").upper()}</div>'
@@ -299,6 +327,7 @@ with _header_placeholder.container():
             <div style="font-size:2rem;font-weight:800;color:{AZUL};line-height:1.1;">Evaluación de Subcontratos</div>
             {_sub}
           </div>
+          {_ultima_eval_html}
         </div>
         """, unsafe_allow_html=True)
 

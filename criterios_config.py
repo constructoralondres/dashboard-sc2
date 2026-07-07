@@ -145,3 +145,13 @@ AREA_ROL = {v: k for k, v in ROL_AREA.items()}
 
 ROLES_EVALUADORES = list(ROL_AREA.keys())
 AREAS = ["TERRENO", "RRHH", "SSOMA", "CALIDAD"]
+
+# Etiquetas visibles para cada rol. "admin" se muestra como "Desarrollador"
+# para no confundirlo con el cargo de obra "Administrador de Obra".
+ROL_LABELS = {
+    "admin": "Desarrollador",
+    "terreno": "Jefe de Terreno",
+    "rrhh": "RRHH",
+    "ssoma": "SSOMA",
+    "calidad": "Calidad",
+}
