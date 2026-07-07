@@ -11,7 +11,7 @@ from datetime import date, timedelta
 import auth
 import firebase_db as fdb
 import historico
-from criterios_config import AREAS, CRITERIOS, ROLES_EVALUADORES, ROL_AREA
+from criterios_config import AREAS, CRITERIOS, ROLES_EVALUADORES, ROL_AREA, ROL_LABELS
 from obras_config import ORDEN_OBRAS
 from scoring import compute_area_score, compute_nota_final
 
@@ -20,7 +20,7 @@ st.set_page_config(page_title="Admin Evaluaciones", page_icon="⚙️", layout="
 AZUL = "#1A1846"
 NARANJO = "#E18426"
 
-usuario = auth.require_login(roles_permitidos=["admin"], titulo="Ingreso administrador")
+usuario = auth.require_login(roles_permitidos=["admin"], titulo="Ingreso desarrollador")
 auth.logout_button()
 
 st.markdown(f"""
@@ -181,6 +181,7 @@ with tab_abiertas:
 
                 fdb.guardar_historial(doc_id, filas_historial)
                 fdb.cerrar_evaluacion(doc_id)
+                st.cache_data.clear()  # fuerza que el dashboard principal recargue con la nueva evaluación
                 st.success(f"Evaluación N°{ev['n_eva']} de {ev['obra']} cerrada y consolidada. "
                            f"Ya aparecerá en el dashboard principal.")
                 st.rerun()
@@ -194,7 +195,7 @@ with tab_usuarios:
     if usuarios:
         df_u = pd.DataFrame([{
             "Usuario": u["username"], "Nombre": u.get("nombre", ""),
-            "Rol": u.get("rol", ""), "Obras": ", ".join(u.get("obras", [])),
+            "Rol": ROL_LABELS.get(u.get("rol", ""), u.get("rol", "")), "Obras": ", ".join(u.get("obras", [])),
             "Activo": "Sí" if u.get("activo", True) else "No",
         } for u in usuarios])
         st.dataframe(df_u, use_container_width=True)
@@ -206,8 +207,7 @@ with tab_usuarios:
             username_in = st.text_input("Usuario (identificador único, sin espacios)")
             nombre_in = st.text_input("Nombre completo")
             rol_in = st.selectbox("Rol", ["admin"] + ROLES_EVALUADORES,
-                                   format_func=lambda r: {"admin": "Administrador", "terreno": "Jefe de Terreno",
-                                                           "rrhh": "RRHH", "ssoma": "SSOMA", "calidad": "Calidad"}.get(r, r))
+                                   format_func=lambda r: ROL_LABELS.get(r, r))
         with col2:
             password_in = st.text_input("Contraseña (dejar en blanco para no cambiarla)", type="password")
             obras_in = st.multiselect("Obras asignadas", ORDEN_OBRAS)
