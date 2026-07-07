@@ -258,12 +258,7 @@ if obras_sel:
         _fila_ult = _df_ult.loc[_df_ult["_FECHA_DT"].idxmax()]
         _fecha_ult_str = _fila_ult["_FECHA_DT"].strftime("%d-%m-%y")
         _n_eva_ult = int(_fila_ult["N_EVA"]) if pd.notna(_fila_ult["N_EVA"]) else None
-        if obras_activas_count == 1 and len(obras_sel) == 1:
-            _texto_ult = f"N°{_n_eva_ult} · {_fecha_ult_str}" if _n_eva_ult is not None else _fecha_ult_str
-        else:
-            _obra_ult = str(_fila_ult["OBRA"]).replace(" Ii", " II")
-            _texto_ult = (f"N°{_n_eva_ult} · {_obra_ult} · {_fecha_ult_str}" if _n_eva_ult is not None
-                          else f"{_obra_ult} · {_fecha_ult_str}")
+        _texto_ult = f"N°{_n_eva_ult} · {_fecha_ult_str}" if _n_eva_ult is not None else _fecha_ult_str
         _ultima_eval_html = f"""
         <div style="margin-left:auto; text-align:right; padding-left:16px;">
           <div style="font-size:0.72rem;font-weight:600;color:{AZUL_MED};text-transform:uppercase;letter-spacing:0.06em;">Última evaluación</div>
@@ -638,8 +633,8 @@ if buscar_nombre or buscar_rut:
             }.get(estado, ("#2a2a2a","#ffffff","⛔"))
             color_bg, color_txt, icono = cfg
             st.markdown(f"""<div style="background:{color_bg};border-left:4px solid {color_txt};color:{color_txt};padding:14px 20px;border-radius:8px;margin-bottom:8px;font-family:'Hanken Grotesk',sans-serif;">
-                <div style="font-size:1.05rem;font-weight:700;">{icono} {row["SUBCONTRATO"]}</div>
-                <div style="font-size:0.82rem;margin-top:4px;">RUT: {row["RUT"]} &nbsp;|&nbsp; Estado: <strong>{estado}</strong> &nbsp;|&nbsp; Actividad: {row.get("ACTIVIDAD","—")} &nbsp;|&nbsp; Obra: {row["OBRA"]}</div>
+                <div style="font-size:1.05rem;font-weight:700;color:{color_txt};">{icono} {row["SUBCONTRATO"]}</div>
+                <div style="font-size:0.82rem;margin-top:4px;color:{color_txt};">RUT: {row["RUT"]} &nbsp;|&nbsp; Estado: <strong>{estado}</strong> &nbsp;|&nbsp; Actividad: {row.get("ACTIVIDAD","—")} &nbsp;|&nbsp; Obra: {row["OBRA"]}</div>
             </div>""", unsafe_allow_html=True)
 
         nombre_sel = df_busq["SUBCONTRATO"].iloc[0]
