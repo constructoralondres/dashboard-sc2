@@ -240,3 +240,102 @@ def obtener_todo_el_historial_app() -> list:
         for d in docs:
             filas.append(d.to_dict())
     return filas
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# DIRECTORIO DE SUBCONTRATISTAS Y PROVEEDORES (maestro de contactos)
+# ══════════════════════════════════════════════════════════════════════════════
+def _doc_id_subcontratista(nombre: str, rut: str = "", actividad: str = "") -> str:
+    """
+    Usa el RUT (si existe) como llave — así una reimportación de la planilla
+    actualiza en vez de duplicar. Si no hay RUT, se usa nombre+actividad, ya
+    que un mismo subcontratista puede tener una fila por cada actividad.
+    """
+    rut = (rut or "").strip()
+    if rut:
+        return _slug(rut)
+    return _slug(f"{nombre}_{actividad}")
+
+
+def crear_o_actualizar_subcontratista(nombre: str, rut: str = "", actividad: str = "",
+                                       region: str = "", contacto: str = "",
+                                       telefono: str = "", correo: str = "",
+                                       ultima_fecha_contacto: str = "",
+                                       trabajado_londres: str = "No",
+                                       comentario: str = "", doc_id: str = None,
+                                       actualizado_por: str = ""):
+    db = get_db()
+    doc_id = doc_id or _doc_id_subcontratista(nombre, rut, actividad)
+    db.collection("subcontratistas").document(doc_id).set({
+        "nombre": nombre.strip(),
+        "rut": (rut or "").strip(),
+        "actividad": (actividad or "").strip(),
+        "region": (region or "").strip(),
+        "contacto": (contacto or "").strip(),
+        "telefono": (telefono or "").strip(),
+        "correo": (correo or "").strip(),
+        "ultima_fecha_contacto": (ultima_fecha_contacto or "").strip(),
+        "trabajado_londres": trabajado_londres or "No",
+        "comentario": (comentario or "").strip(),
+        "actualizado_en": _hoy_str(),
+        "actualizado_por": actualizado_por,
+    }, merge=True)
+    return doc_id
+
+
+def obtener_subcontratista(doc_id: str):
+    db = get_db()
+    doc = db.collection("subcontratistas").document(doc_id).get()
+    return doc.to_dict() if doc.exists else None
+
+
+def listar_subcontratistas() -> list:
+    db = get_db()
+    docs = db.collection("subcontratistas").stream()
+    out = []
+    for d in docs:
+        s = d.to_dict()
+        s["doc_id"] = d.id
+        out.append(s)
+    return sorted(out, key=lambda s: s.get("nombre", ""))
+
+
+def eliminar_subcontratista(doc_id: str):
+    db = get_db()
+    db.collection("subcontratistas").document(doc_id).delete()
+
+
+def importar_subcontratistas_masivo(filas: list, actualizado_por: str = "") -> int:
+    """
+    filas: lista de dicts con llaves nombre, rut, actividad, region, contacto,
+    telefono, correo, ultima_fecha_contacto, trabajado_londres, comentario.
+    Hace upsert por lotes (batch) usando RUT (o nombre+actividad) como llave,
+    así se puede reimportar la planilla actualizada sin generar duplicados.
+    Devuelve la cantidad de filas escritas.
+    """
+    db = get_db()
+    escritas = 0
+    filas_validas = [f for f in filas if str(f.get("nombre", "")).strip()]
+    for i in range(0, len(filas_validas), 400):
+        lote = filas_validas[i:i + 400]
+        batch = db.batch()
+        for f in lote:
+            doc_id = _doc_id_subcontratista(f.get("nombre", ""), f.get("rut", ""), f.get("actividad", ""))
+            ref = db.collection("subcontratistas").document(doc_id)
+            batch.set(ref, {
+                "nombre": str(f.get("nombre", "")).strip(),
+                "rut": str(f.get("rut", "") or "").strip(),
+                "actividad": str(f.get("actividad", "") or "").strip(),
+                "region": str(f.get("region", "") or "").strip(),
+                "contacto": str(f.get("contacto", "") or "").strip(),
+                "telefono": str(f.get("telefono", "") or "").strip(),
+                "correo": str(f.get("correo", "") or "").strip(),
+                "ultima_fecha_contacto": str(f.get("ultima_fecha_contacto", "") or "").strip(),
+                "trabajado_londres": str(f.get("trabajado_londres", "") or "No").strip(),
+                "comentario": str(f.get("comentario", "") or "").strip(),
+                "actualizado_en": _hoy_str(),
+                "actualizado_por": actualizado_por,
+            }, merge=True)
+        batch.commit()
+        escritas += len(lote)
+    return escritas
