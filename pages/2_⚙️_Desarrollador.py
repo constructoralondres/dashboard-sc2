@@ -29,7 +29,8 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-tab_abrir, tab_abiertas, tab_usuarios = st.tabs(["🆕 Abrir evaluación", "📋 Evaluaciones abiertas / cerrar", "👥 Usuarios"])
+tab_abrir, tab_abiertas, tab_usuarios, tab_directorio = st.tabs(
+    ["🆕 Abrir evaluación", "📋 Evaluaciones abiertas / cerrar", "👥 Usuarios", "📇 Directorio"])
 
 excel_path = Path("consolidado.xlsx")
 df_hist = historico.leer_excel_bruto(excel_path.read_bytes()) if excel_path.exists() else pd.DataFrame()
@@ -236,4 +237,105 @@ with tab_usuarios:
         if st.button("🗑️ Eliminar usuario seleccionado"):
             fdb.eliminar_usuario(u_del)
             st.success(f"Usuario '{u_del}' eliminado.")
+            st.rerun()
+
+# ══════════════════════════════════════════════════════════════════════════════
+# TAB 4 — DIRECTORIO DE SUBCONTRATISTAS Y PROVEEDORES
+# ══════════════════════════════════════════════════════════════════════════════
+with tab_directorio:
+    st.markdown("#### 📥 Importar planilla")
+    st.caption("Sube un Excel con columnas NOMBRE, RUT, ACTIVIDAD, REGION, CONTACTO, TELEFONO, CORREO, "
+               "ULTIMA_FECHA_CONTACTO, TRABAJADO_LONDRES (Sí/No), COMENTARIO. Si un RUT (o nombre+actividad) "
+               "ya existe en el directorio, se actualiza en vez de duplicarse — puedes reimportar cuando quieras.")
+    archivo_directorio = st.file_uploader("Excel del directorio", type=["xlsx", "xls"], key="upload_directorio")
+    if archivo_directorio is not None:
+        try:
+            df_import = pd.read_excel(archivo_directorio)
+            df_import.columns = [str(c).strip().upper() for c in df_import.columns]
+            st.dataframe(df_import.head(10), use_container_width=True)
+            st.caption(f"{len(df_import)} filas detectadas. Se muestran las primeras 10.")
+            if st.button("🚀 Importar al directorio", type="primary"):
+                col_map = {
+                    "NOMBRE": "nombre", "RUT": "rut", "ACTIVIDAD": "actividad", "REGION": "region",
+                    "CONTACTO": "contacto", "TELEFONO": "telefono", "CORREO": "correo",
+                    "ULTIMA_FECHA_CONTACTO": "ultima_fecha_contacto",
+                    "TRABAJADO_LONDRES": "trabajado_londres", "COMENTARIO": "comentario",
+                }
+                filas = []
+                for _, row in df_import.iterrows():
+                    fila = {v: row.get(k, "") for k, v in col_map.items() if k in df_import.columns}
+                    filas.append(fila)
+                n = fdb.importar_subcontratistas_masivo(filas, actualizado_por=usuario["username"])
+                st.success(f"{n} filas importadas/actualizadas en el directorio.")
+                st.rerun()
+        except Exception as e:
+            st.error(f"No se pudo leer el archivo: {e}")
+
+    st.markdown("<hr>", unsafe_allow_html=True)
+    st.markdown("#### ➕ Agregar / editar contacto")
+    with st.form("form_subcontratista"):
+        col1, col2 = st.columns(2)
+        with col1:
+            nombre_dir = st.text_input("Nombre del subcontratista/proveedor")
+            rut_dir = st.text_input("RUT (opcional, pero recomendado)")
+            actividad_dir = st.text_input("Actividad")
+            region_dir = st.text_input("Región")
+        with col2:
+            contacto_dir = st.text_input("Nombre de contacto")
+            telefono_dir = st.text_input("Teléfono")
+            correo_dir = st.text_input("Correo")
+            fecha_contacto_dir = st.text_input("Última fecha de contacto (ej: 2026-05-20)")
+        trabajado_dir = st.radio("¿Ha trabajado con Londres?", ["No", "Sí"], horizontal=True)
+        comentario_dir = st.text_area("Comentario")
+        guardar_dir = st.form_submit_button("💾 Guardar contacto")
+
+    if guardar_dir:
+        if not nombre_dir.strip():
+            st.error("El nombre es obligatorio.")
+        else:
+            fdb.crear_o_actualizar_subcontratista(
+                nombre=nombre_dir, rut=rut_dir, actividad=actividad_dir, region=region_dir,
+                contacto=contacto_dir, telefono=telefono_dir, correo=correo_dir,
+                ultima_fecha_contacto=fecha_contacto_dir, trabajado_londres=trabajado_dir,
+                comentario=comentario_dir, actualizado_por=usuario["username"],
+            )
+            st.success(f"Contacto '{nombre_dir}' guardado.")
+            st.rerun()
+
+    st.markdown("<hr>", unsafe_allow_html=True)
+    st.markdown("#### 📇 Directorio completo")
+    subcontratistas = fdb.listar_subcontratistas()
+    if not subcontratistas:
+        st.info("Aún no hay contactos en el directorio. Impórtalos arriba o agrégalos uno a uno.")
+    else:
+        df_dir = pd.DataFrame(subcontratistas)
+        col_f1, col_f2, col_f3 = st.columns(3)
+        with col_f1:
+            busq_dir = st.text_input("Buscar por nombre", key="busq_directorio")
+        with col_f2:
+            regiones_dir = sorted([r for r in df_dir.get("region", pd.Series()).dropna().unique() if r])
+            region_sel = st.selectbox("Filtrar por región", ["Todas"] + regiones_dir, key="filtro_region_dir")
+        with col_f3:
+            londres_sel = st.selectbox("Trabajado con Londres", ["Todos", "Sí", "No"], key="filtro_londres_dir")
+
+        df_dir_f = df_dir.copy()
+        if busq_dir:
+            df_dir_f = df_dir_f[df_dir_f["nombre"].str.contains(busq_dir, case=False, na=False)]
+        if region_sel != "Todas":
+            df_dir_f = df_dir_f[df_dir_f.get("region", "") == region_sel]
+        if londres_sel != "Todos":
+            df_dir_f = df_dir_f[df_dir_f.get("trabajado_londres", "") == londres_sel]
+
+        cols_mostrar = ["nombre", "rut", "actividad", "region", "contacto", "telefono", "correo",
+                        "ultima_fecha_contacto", "trabajado_londres", "comentario"]
+        cols_mostrar = [c for c in cols_mostrar if c in df_dir_f.columns]
+        st.caption(f"{len(df_dir_f)} de {len(df_dir)} contactos")
+        st.dataframe(df_dir_f[cols_mostrar], use_container_width=True, height=450)
+
+        st.markdown("#### 🗑️ Eliminar contacto")
+        opciones_del = {f"{s['nombre']} — {s.get('actividad','')}": s["doc_id"] for s in subcontratistas}
+        sel_del = st.selectbox("Selecciona el contacto a eliminar", list(opciones_del.keys()), key="del_dir_sel")
+        if st.button("🗑️ Eliminar contacto seleccionado"):
+            fdb.eliminar_subcontratista(opciones_del[sel_del])
+            st.success("Contacto eliminado.")
             st.rerun()
