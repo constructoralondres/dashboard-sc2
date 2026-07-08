@@ -250,24 +250,56 @@ with tab_directorio:
     archivo_directorio = st.file_uploader("Excel del directorio", type=["xlsx", "xls"], key="upload_directorio")
     if archivo_directorio is not None:
         try:
-            df_import = pd.read_excel(archivo_directorio)
-            df_import.columns = [str(c).strip().upper() for c in df_import.columns]
-            st.dataframe(df_import.head(10), use_container_width=True)
-            st.caption(f"{len(df_import)} filas detectadas. Se muestran las primeras 10.")
-            if st.button("🚀 Importar al directorio", type="primary"):
-                col_map = {
-                    "NOMBRE": "nombre", "RUT": "rut", "ACTIVIDAD": "actividad", "REGION": "region",
-                    "CONTACTO": "contacto", "TELEFONO": "telefono", "CORREO": "correo",
-                    "ULTIMA_FECHA_CONTACTO": "ultima_fecha_contacto",
-                    "TRABAJADO_LONDRES": "trabajado_londres", "COMENTARIO": "comentario",
+            crudo = pd.read_excel(archivo_directorio, header=None)
+            fila_encabezado = None
+            for i in range(min(10, len(crudo))):
+                valores_fila = [str(v).strip().upper() for v in crudo.iloc[i].tolist()]
+                if "NOMBRE" in valores_fila:
+                    fila_encabezado = i
+                    break
+
+            if fila_encabezado is None:
+                st.error("No encontré una columna llamada 'NOMBRE' en las primeras 10 filas del archivo. "
+                         "Revisa que el Excel tenga esa columna (puede estar en cualquier fila, se detecta sola).")
+            else:
+                archivo_directorio.seek(0)
+                df_import = pd.read_excel(archivo_directorio, header=fila_encabezado)
+                df_import.columns = [str(c).strip().upper() for c in df_import.columns]
+                # Alias de nombres alternativos (ej: la planilla original de contactos)
+                alias_columnas = {
+                    "REGIÓN": "REGION", "MAIL": "CORREO", "CORREO ELECTRONICO": "CORREO",
+                    "FECHA ÚLTIMO CONTACTO": "ULTIMA_FECHA_CONTACTO", "FECHA ULTIMO CONTACTO": "ULTIMA_FECHA_CONTACTO",
+                    "EXP EN LONDRES": "TRABAJADO_LONDRES", "TELÉFONO": "TELEFONO",
                 }
-                filas = []
-                for _, row in df_import.iterrows():
-                    fila = {v: row.get(k, "") for k, v in col_map.items() if k in df_import.columns}
-                    filas.append(fila)
-                n = fdb.importar_subcontratistas_masivo(filas, actualizado_por=usuario["username"])
-                st.success(f"{n} filas importadas/actualizadas en el directorio.")
-                st.rerun()
+                df_import.columns = [alias_columnas.get(c, c) for c in df_import.columns]
+                df_import = df_import.fillna("").astype(str)
+
+                columnas_esperadas = ["NOMBRE", "RUT", "ACTIVIDAD", "REGION", "CONTACTO", "TELEFONO",
+                                      "CORREO", "ULTIMA_FECHA_CONTACTO", "TRABAJADO_LONDRES"]
+                faltantes = [c for c in columnas_esperadas if c not in df_import.columns]
+
+                st.dataframe(df_import.head(10), use_container_width=True)
+                st.caption(f"{len(df_import)} filas detectadas (encabezado encontrado en la fila {fila_encabezado + 1} del Excel).")
+                if faltantes:
+                    st.warning(f"No encontré estas columnas — quedarán vacías para todas las filas: {', '.join(faltantes)}")
+
+                if st.button("🚀 Importar al directorio", type="primary"):
+                    col_map = {
+                        "NOMBRE": "nombre", "RUT": "rut", "ACTIVIDAD": "actividad", "REGION": "region",
+                        "CONTACTO": "contacto", "TELEFONO": "telefono", "CORREO": "correo",
+                        "ULTIMA_FECHA_CONTACTO": "ultima_fecha_contacto",
+                        "TRABAJADO_LONDRES": "trabajado_londres", "COMENTARIO": "comentario",
+                    }
+                    filas = []
+                    for _, row in df_import.iterrows():
+                        fila = {v: row.get(k, "") for k, v in col_map.items() if k in df_import.columns}
+                        filas.append(fila)
+                    n = fdb.importar_subcontratistas_masivo(filas, actualizado_por=usuario["username"])
+                    if n == 0:
+                        st.error("Se importaron 0 filas — ninguna fila tenía un valor en NOMBRE. Revisa el archivo.")
+                    else:
+                        st.success(f"{n} filas importadas/actualizadas en el directorio.")
+                        st.rerun()
         except Exception as e:
             st.error(f"No se pudo leer el archivo: {e}")
 
